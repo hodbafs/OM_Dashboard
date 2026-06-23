@@ -100,6 +100,9 @@ const initialGroups = [
 // ==========================================================================
 // Dashboard State Management
 // ==========================================================================
+// ⚠️ ใส่ URL ของ Google Apps Script ที่ได้จากขั้นตอน Deploy ด้านล่างนี้เพื่อเปิดใช้งานระบบเรียลไทม์
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzlP5NBTTTUgVV1-dxhnAL_Xq8XODfhjl6sv2Rr1UV4hwK7RpSIZiXEtcaKQtlUVZLD/exec"; 
+
 let groups = [];
 let activeStatusFilter = 'All';
 let activeChannelFilter = 'All'; 
@@ -119,7 +122,7 @@ const CALENDAR_END = "2026-08-31";
 const TOTAL_CALENDAR_DAYS = 92; // 30 (June) + 31 (July) + 31 (August)
 
 // ==========================================================================
-// Initialization & Storage Sync (Dual Mode)
+// Initialization & Storage Sync (Dual Mode / Google Sheets)
 // ==========================================================================
 async function init() {
   initTheme();
@@ -138,11 +141,37 @@ async function fetchGroupsData() {
   if (refreshBtn) refreshBtn.classList.add('spinning');
   
   try {
+    // 1. ตรวจสอบการใช้งานระบบเรียลไทม์ผ่าน Google Sheets
+    if (GOOGLE_SCRIPT_URL) {
+      const response = await fetch(GOOGLE_SCRIPT_URL);
+      if (!response.ok) throw new Error('API server returned error code');
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        groups = data;
+      } else {
+        // หาก Google Sheets ว่าง ให้ใส่ข้อมูลเริ่มต้นและกดบันทึกเพื่อตั้งต้นชีต
+        groups = [...initialGroups];
+        await saveGroupsData();
+      }
+      
+      syncMode = 'google_sheets';
+      if (syncWidget) {
+        syncWidget.className = 'sync-widget online';
+        syncStatus.innerHTML = `<i class="fa-solid fa-table-list" style="margin-right: 4px; color: var(--color-ontrack);"></i> Google Sheets (เรียลไทม์)`;
+      }
+      
+      try {
+        localStorage.setItem('outward_mindset_groups', JSON.stringify(groups));
+      } catch(e) {}
+      return;
+    }
+    
+    // 2. หากไม่ได้ตั้งค่า Google Sheets จะทำงานผ่าน Local Backend/LocalStorage
     const response = await fetch('/api/data');
     if (!response.ok) throw new Error('API server returned error code');
     const data = await response.json();
     
-    // Active OneDrive Server mode
     groups = data;
     syncMode = 'online';
     
@@ -151,13 +180,12 @@ async function fetchGroupsData() {
       syncStatus.innerHTML = `<i class="fa-solid fa-cloud-arrow-down" style="margin-right: 4px;"></i> ซิงค์ OneDrive (data.json)`;
     }
     
-    // Save locally as a secondary backup
     try {
       localStorage.setItem('outward_mindset_groups', JSON.stringify(groups));
     } catch(e) {}
     
   } catch (err) {
-    console.warn('Vite dev server API not available. Operating in Local Browser Storage mode.', err);
+    console.warn('Backend API not available. Operating in Local Browser Storage mode.', err);
     syncMode = 'offline';
     
     if (syncWidget) {
@@ -165,13 +193,12 @@ async function fetchGroupsData() {
       syncStatus.innerHTML = `<i class="fa-solid fa-circle-info" style="margin-right: 4px;"></i> Local Browser (ออฟไลน์)`;
     }
     
-    // Retrieve from localStorage
+    // ดึงจาก LocalStorage
     try {
       const storedData = localStorage.getItem('outward_mindset_groups');
       if (storedData) {
         groups = JSON.parse(storedData);
         
-        // Auto-migrate missing groups/episodes or missing start/end date properties
         let hasUpdates = false;
         initialGroups.forEach(ig => {
           const existingIndex = groups.findIndex(g => g.groupNumber === ig.groupNumber);
@@ -179,7 +206,6 @@ async function fetchGroupsData() {
             groups.push(ig);
             hasUpdates = true;
           } else {
-            // Update episode titles or date fields to match new specifications
             if (groups[existingIndex].episode !== ig.episode || !groups[existingIndex].timelineStart) {
               groups[existingIndex].episode = ig.episode;
               groups[existingIndex].timelineStart = ig.timelineStart;
@@ -215,6 +241,27 @@ async function saveGroupsData() {
     console.error('Failed to save data locally:', e);
   }
   
+  // 1. บันทึกลง Google Sheets หากตั้งค่า URL ไว้
+  if (GOOGLE_SCRIPT_URL) {
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(groups)
+      });
+      const res = await response.json();
+      if (res.status !== 'success') throw new Error(res.message || 'Apps Script returned error');
+      console.log('Successfully saved to Google Sheets');
+    } catch (error) {
+      console.error('Error writing to Google Sheets:', error);
+      showToast('บันทึกในเครื่องแล้ว แต่ไม่สามารถอัปเดต Google Sheet ได้ในขณะนี้', 'warning');
+    }
+    return;
+  }
+  
+  // 2. บันทึกลง OneDrive API หากไม่ใช่โหมด Google Sheets
   if (syncMode === 'online') {
     try {
       const response = await fetch('/api/data', {
