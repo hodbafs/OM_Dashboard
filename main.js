@@ -131,6 +131,36 @@ async function init() {
   await fetchGroupsData();
   renderDashboard();
   initScrollToTop();
+  startAutoSync(); // เริ่มต้นการซิงค์ข้อมูลเรียลไทม์อัตโนมัติเบื้องหลัง
+}
+
+function startAutoSync() {
+  if (!GOOGLE_SCRIPT_URL) return;
+  
+  setInterval(async () => {
+    // ข้ามการซิงค์เบื้องหลังชั่วคราวหากผู้ใช้กำลังเปิดฟอร์มแก้ไขอยู่ เพื่อป้องกันฟอร์มรีเซ็ตระหว่างกรอกข้อมูล
+    const editModal = document.getElementById('modal-edit-project');
+    if (editModal && editModal.classList.contains('active')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL);
+      if (!response.ok) return;
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        // ตรวจสอบว่าข้อมูลใน Google Sheet ต่างจากในเครื่องหรือไม่
+        if (JSON.stringify(data) !== JSON.stringify(groups)) {
+          groups = data;
+          renderDashboard();
+          showToast('อัปเดตข้อมูลล่าสุดจาก Google Sheets เรียบร้อยแล้ว', 'success');
+        }
+      }
+    } catch (e) {
+      console.warn('Auto sync warning:', e);
+    }
+  }, 10000); // ทำการดึงข้อมูลใหม่ทุกๆ 10 วินาที
 }
 
 async function fetchGroupsData() {
