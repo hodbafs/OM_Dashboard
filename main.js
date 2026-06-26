@@ -412,6 +412,16 @@ function setupEventListeners() {
   const copyTemplateBtn = document.getElementById('btn-copy-template');
   if (copyTemplateBtn) copyTemplateBtn.addEventListener('click', copyMarkdownTemplate);
 
+  // Delete from View Modal
+  const deleteFromViewBtn = document.getElementById('btn-delete-from-view');
+  if (deleteFromViewBtn) {
+    deleteFromViewBtn.addEventListener('click', () => {
+      if (selectedProjectId) {
+        deleteProject(selectedProjectId);
+      }
+    });
+  }
+
   // Theme Toggle Button
   const themeToggleBtn = document.getElementById('btn-theme-toggle');
   if (themeToggleBtn) {
@@ -1085,6 +1095,9 @@ function renderGroupGrid() {
           <button class="icon-btn primary btn-edit" title="แก้ไขข้อมูล" data-id="${g.id}">
             <i class="fa-regular fa-pen-to-square"></i>
           </button>
+          <button class="icon-btn danger btn-delete" title="ลบข้อมูลกลุ่มนี้" data-id="${g.id}">
+            <i class="fa-regular fa-trash-can"></i>
+          </button>
         </div>
       </div>
     `;
@@ -1098,6 +1111,11 @@ function renderGroupGrid() {
     card.querySelector('.btn-edit').addEventListener('click', (e) => {
       e.stopPropagation();
       openEditModal(g.id);
+    });
+
+    card.querySelector('.btn-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteProject(g.id);
     });
 
     // Entire Card Click View Details Trigger (excluding footer buttons)
@@ -1439,6 +1457,27 @@ async function handleFormSubmit(e) {
   await saveGroupsData();
   closeModal('modal-edit-project');
   renderDashboard();
+}
+
+// ==========================================================================
+// Delete Project
+// ==========================================================================
+async function deleteProject(id) {
+  const g = groups.find(item => item.id === id);
+  if (!g) {
+    showToast('ไม่พบข้อมูลกลุ่มที่ต้องการลบ', 'warning');
+    return;
+  }
+
+  const confirmed = confirm(`⚠️ คุณต้องการลบข้อมูลของ "กลุ่มที่ ${g.groupNumber}: ${g.episode}" ใช่หรือไม่?\n\nเมื่อลบแล้วจะไม่สามารถกู้คืนได้`);
+  if (!confirmed) return;
+
+  groups = groups.filter(item => item.id !== id);
+
+  await saveGroupsData();
+  closeModal('modal-view-detail');
+  renderDashboard();
+  showToast(`ลบข้อมูลกลุ่มที่ ${g.groupNumber} (${g.episode}) เรียบร้อยแล้ว`, 'success');
 }
 
 // ==========================================================================
